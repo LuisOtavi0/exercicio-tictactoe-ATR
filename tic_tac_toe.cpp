@@ -2,6 +2,8 @@
 #include <random>
 #include <thread>
 #include <array>
+#include <mutex>
+#include <condition_variable>
 
 // Classe TicTacToe
 class TicTacToe {
@@ -10,6 +12,8 @@ class TicTacToe {
   char current_player; // Jogador atual ('X' ou 'O')
   bool game_over; // Estado do jogo
   char winner; // Vencedor do jogo
+  std::mutex mtx;
+  std::condition_variable cv;
   
   public:
   TicTacToe() {
@@ -40,24 +44,29 @@ class TicTacToe {
   }
   
   bool make_move(char player, int row, int col) {
-    // Implementar a lógica para realizar uma jogada no tabuleiro
-    if(!game_over){
-      if(board[row][col] != 'X' && board[row][col] != 'O'){
+    std::unique_lock<std::mutex> lock(mtx);
+    cv.wait(lock, [this, player] { 
+        return current_player == player || game_over; 
+    });
+
+    if(game_over){
+        return true;
+    }
+    if(board[row][col] == ' '){
         board[row][col] = player;
         display_board();
-        game_over = is_game_over();
-        if(player == 'O'){
-          current_player = 'X';
-        }else{
-          current_player = 'O';
+        if(check_win(player)){
+          game_over = true;
+            winner = player;
+        }else if (check_draw()) {
+            game_over = true;
+            winner = 'D';
+        } else {
+          current_player = (player == 'X') ? 'O' : 'X';
         }
-        return 1;
-      }else{
-        return 0;
-      }
-    }else{
-      return 1;
-    }
+        cv.notify_all();
+        return true;}
+    return false;
   }
   
   bool check_win(char player) {
@@ -101,16 +110,7 @@ class TicTacToe {
   }
   
   bool is_game_over() {
-    // Retornar se o jogo terminou
-    if(check_win(current_player)){
-      return 1;
-    }else if(check_draw()){
-      winner = 'D';
-      return 1;
-    }else{
-      winner = '-';
-      return 0;
-    }
+      return game_over;
   }
   
   char get_winner() {
